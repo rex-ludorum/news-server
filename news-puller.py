@@ -111,6 +111,7 @@ TERMINAL_WIDTH = 172
 
 NYT_API_TIMEOUT = 30
 CLAUDE_API_TIMEOUT = 1.2
+GNEWS_API_TIMEOUT = 1
 
 conns = []
 
@@ -164,8 +165,8 @@ def runNewsPuller():
 		try:
 			elapsedGNewsTime = 1 if elapsedGNewsTime == -1 else time.time() - startGNews
 			startGNews = time.time()
-			if elapsedGNewsTime < 1:
-				time.sleep(1 - elapsedGNewsTime)
+			if elapsedGNewsTime < GNEWS_API_TIMEOUT:
+				time.sleep(GNEWS_API_TIMEOUT - elapsedGNewsTime)
 			response = requests.get(GNEWS_URL, params=GNEWS_PARAMS)
 			response.raise_for_status()
 
