@@ -163,7 +163,7 @@ def runNewsPuller():
 	while True:
 		totalResponse = []
 		try:
-			elapsedGNewsTime = 1 if elapsedGNewsTime == -1 else time.time() - startGNews
+			elapsedGNewsTime = GNEWS_API_TIMEOUT if elapsedGNewsTime == -1 else time.time() - startGNews
 			startGNews = time.time()
 			if elapsedGNewsTime < GNEWS_API_TIMEOUT:
 				time.sleep(GNEWS_API_TIMEOUT - elapsedGNewsTime)
@@ -187,7 +187,7 @@ def runNewsPuller():
 			printError(e)
 
 		try:
-			elapsedNYTTime = 12 if elapsedNYTTime == -1 else time.time() - startNYT
+			elapsedNYTTime = NYT_API_TIMEOUT if elapsedNYTTime == -1 else time.time() - startNYT
 			if elapsedNYTTime >= NYT_API_TIMEOUT:
 				startNYT = time.time()
 				response = requests.get(NYT_US_NEWS_URL, params=NYT_PARAMS)
@@ -232,7 +232,7 @@ def runNewsPuller():
 								# f.write(response.text)
 							# print(response.text)
 							soup = BeautifulSoup(response.text, 'html.parser')
-							mainArticles = soup.find_all("article", attrs={"id": "story"})
+							mainArticles = soup.find_all("article", attrs={"id": re.compile("story|interactive")})
 							for mainArticle in mainArticles:
 								cleanedArticle = mainArticle.get_text(" ", strip=True)
 								totalResponse.append(cleanedArticle)
@@ -250,7 +250,7 @@ def runNewsPuller():
 
 		try:
 			if totalResponse:
-				elapsedClaudeTime = 2 if elapsedClaudeTime == -1 else time.time() - startClaude
+				elapsedClaudeTime = CLAUDE_API_TIMEOUT if elapsedClaudeTime == -1 else time.time() - startClaude
 				if elapsedClaudeTime < CLAUDE_API_TIMEOUT:
 					time.sleep(CLAUDE_API_TIMEOUT - elapsedClaudeTime)
 				startClaude = time.time()
