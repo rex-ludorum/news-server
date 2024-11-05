@@ -109,7 +109,7 @@ MAX_RECENT_ARTICLES = 100
 
 TERMINAL_WIDTH = 172
 
-NYT_API_TIMEOUT = 12
+NYT_API_TIMEOUT = 30
 CLAUDE_API_TIMEOUT = 1.2
 
 conns = []
@@ -125,7 +125,7 @@ def sendSocketMessage(sock, data):
 		try:
 			conn, _ = sock.accept()
 			conns.append(conn)
-			print("Connection accepted at " + str(datetime.datetime.now()))
+			print("------------------------ Connection accepted at " + str(datetime.datetime.now()) + " ------------------------")
 		except Exception as e:
 			if conn in conns:
 				conns.remove(conn)
@@ -248,10 +248,10 @@ def runNewsPuller():
 			printError(e)
 
 		try:
-			elapsedClaudeTime = 2 if elapsedClaudeTime == -1 else time.time() - startClaude
-			if elapsedClaudeTime < CLAUDE_API_TIMEOUT:
-				time.sleep(CLAUDE_API_TIMEOUT - elapsedClaudeTime)
 			if totalResponse:
+				elapsedClaudeTime = 2 if elapsedClaudeTime == -1 else time.time() - startClaude
+				if elapsedClaudeTime < CLAUDE_API_TIMEOUT:
+					time.sleep(CLAUDE_API_TIMEOUT - elapsedClaudeTime)
 				startClaude = time.time()
 				message = claudeClient.messages.create(
 					model=CLAUDE_MODEL,
