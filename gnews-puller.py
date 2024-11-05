@@ -1,15 +1,19 @@
 import anthropic
+import datetime
 import json
 import os
-import re
 import requests
+import select
+import socket
+import time
+import traceback
 from bs4 import BeautifulSoup
 
 GNEWS_API_KEY = os.environ.get("GNEWS_API_KEY")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 CLAUDE_SONNET_MODEL = "claude-3-5-haiku-latest"
 LLM_PROMPT_INTRO = (
-	"Analyze the following articles for election news and output a list of the following items. If the result is not determined for a specific item yet, write IDK instead of the options given. Separate each item: "
+	"Analyze the following articles about election news and output a list of the following items. If the result cannot be confirmed for a specific item, write IDK instead of the options given. Separate each item. Do not assume or make projections for results. The articles are as follows: "
 	"1. If Kamala wins the presidency, write DPRES here, and if Trump wins, write RPRES here "
 	"2. If Democrats win the majority of the seats in the Senate, write DSEN here, and if the Republicans win the majority, write RSEN here "
 	"3. If Democrats win the majority of the seats in the House of Representatives, write DHOUSE here, and if the Republicans win the majority, write RHOUSE here "
@@ -85,70 +89,78 @@ PARAMS = {
 	"q": "(popular vote) OR (presidential election) OR senate OR (house of representatives) OR (state election) OR (margin of victory) OR (electoral college)",
 }
 
-claudeClient = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+def printError(error):
+	errorMessage = repr(error) + " encountered at " + str(time.strftime("%H:%M:%S", time.localtime()))
+	print(errorMessage)
 
-response = requests.get(GNEWS_URL, params=PARAMS)
-response.raise_for_status()
-totalResponse = []
+MAX_RECENT_ARTICLES = 100
 
-# print(len(response.json()['articles']))
-print(json.dumps(response.json(), indent=2))
-for article in response.json()['articles']:
-	totalResponse.append(article['content'])
+conns = []
 
-message = claudeClient.messages.create(
-	model=CLAUDE_SONNET_MODEL,
-	max_tokens=2048,
-	messages=[
-		# {"role": "user", "content": "Read the following articles and output 1 if they indicate the Republicans have won the presidential election, and output 0 otherwise." + " ".join(totalResponse)}
-		{"role": "user", "content": LLM_PROMPT_INTRO + " ".join(totalResponse)}
-	]
-)
-print(message.content)
+def sendLLMResults(sock, data):
+	global conns
 
-exit()
+	conn = None
+	if isSocketActive(sock):
+		try:
+			conn, _ = sock.accept()
+			conns.append(conn)
+		except Exception as e:
+			if conn in conns:
+				conns.remove(conn)
+			traceback.print_exc()
+			printError(e)
 
-for result in response.json()['results']:
-	subUrl = result['url']
-	response = requests.get(subUrl, headers=WGET_HEADERS)
-	response.raise_for_status()
-	with open(subUrl.split('/')[-1], "w") as f:
-		f.write(response.text)
-	# print(response.text)
-	soup = BeautifulSoup(response.text, 'html.parser')
-	print(subUrl)
-	if "/live" in subUrl:
-		divs = soup.find_all("div", attrs={"class": re.compile("live-blog-post css|live-blog-post pinned-post|live-blog-reporter-update")})
-		for div in divs:
-			cleanedDiv = div.get_text(" ", strip=True)
-			# print(cleanedDiv)
-			totalResponse.append(cleanedDiv)
-		'''
-		scripts = soup.find_all("script", attrs={"data-rh": "true"})
-		for script in scripts:
-			print(script)
-			for content in script.contents:
-				print(content)
-		'''
-	elif isRelevantUrl(subUrl):
-		mainArticles = soup.find_all("article", attrs={"id": "story"})
-		# print(mainArticle)
-		# print(soup.get_text(" ", strip=True))
-		for mainArticle in mainArticles:
-			cleanedArticle = mainArticle.get_text(" ", strip=True)
-			totalResponse.append(cleanedArticle)
-			print(cleanedArticle)
+	for conn in conns:
+		try:
+			conn.sendall(data.encode())
+		except Exception as e:
+			conn.close()
+			conns.remove(conn)
+			traceback.print_exc()
+			printError(e)
 
-with open("totalResponse", "w") as f:
-	for response in totalResponse:
-		f.write(response)
-		f.write("\n")
+def isSocketActive(sock):
+	# Use select to check if the socket is readable
+	readable, _, _ = select.select([sock], [], [], 0)
+	return bool(readable)
 
-message = claudeClient.messages.create(
-	model=CLAUDE_SONNET_MODEL,
-	max_tokens=1024,
-	messages=[
-		{"role": "user", "content": "Read the following articles and output 1 if they indicate the Republicans have won the presidential election, and output 0 otherwise." + " ".join(totalResponse)}
-	]
-)
-print(message.content)
+def runNewsPuller():
+	claudeClient = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+	mostRecentArticles = []
+
+	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK)
+	sock.bind(('localhost', 23456))
+	sock.listen(2)
+
+	while True:
+		try:
+			response = requests.get(GNEWS_URL, params=PARAMS)
+			response.raise_for_status()
+			totalResponse = []
+
+			for article in response.json()['articles']:
+				title = article['title']
+				if title not in mostRecentArticles:
+					# print(article['title'] + " retrieved at " + str(datetime.datetime.now()))
+					print(str(datetime.datetime.now()) + ": " + article['title'])
+					mostRecentArticles.append(article['title'])
+					if len(mostRecentArticles) > MAX_RECENT_ARTICLES:
+						mostRecentArticles = mostRecentArticles[len(mostRecentArticles) - MAX_RECENT_ARTICLES:]
+					totalResponse.append(article['content'])
+					# totalResponse.append(article['title'])
+			if totalResponse:
+				message = claudeClient.messages.create(
+					model=CLAUDE_SONNET_MODEL,
+					max_tokens=2048,
+					messages=[
+						{"role": "user", "content": LLM_PROMPT_INTRO + " ".join(totalResponse)}
+					]
+				)
+				# sendLLMResults(message.content
+				print(message.content[0].text)
+		except Exception as e:
+			traceback.print_exc()
+			printError(e)
+
+runNewsPuller()
