@@ -125,6 +125,7 @@ def sendSocketMessage(sock, data):
 		try:
 			conn, _ = sock.accept()
 			conns.append(conn)
+			print("Connection accepted at " + str(datetime.datetime.now()))
 		except Exception as e:
 			if conn in conns:
 				conns.remove(conn)
@@ -194,49 +195,54 @@ def runNewsPuller():
 					subUrl = result['url']
 					if '/live' in subUrl:
 						# print(subUrl)
-						response = requests.get(subUrl, headers=WGET_HEADERS)
-						response.raise_for_status()
-						# with open(subUrl.split('/')[-1], "w") as f:
-							# f.write(response.text)
-						# print(response.text)
-						soup = BeautifulSoup(response.text, 'html.parser')
-						divs = soup.find_all("div", attrs={"class": re.compile("live-blog-post css|live-blog-post pinned-post|live-blog-reporter-update")})
-						for div in divs:
-							cleanedDiv = div.get_text(" ", strip=True)
-							# print(cleanedDiv)
-							divIdentifier = cleanedDiv[:TERMINAL_WIDTH]
-							if divIdentifier not in mostRecentNYTArticles:
-								print(str(datetime.datetime.now()) + ": " + divIdentifier)
-								mostRecentNYTArticles.append(cleanedDiv[:TERMINAL_WIDTH])
-								if len(mostRecentNYTArticles) > MAX_RECENT_ARTICLES:
-									mostRecentNYTArticles = mostRecentNYTArticles[len(mostRecentNYTArticles) - MAX_RECENT_ARTICLES:]
-								totalResponse.append(cleanedDiv)
-								sendSocketMessage(sock, json.dumps({"title": cleanedDiv}))
-							'''
-							scripts = soup.find_all("script", attrs={"data-rh": "true"})
-							for script in scripts:
-								print(script)
-								for content in script.contents:
-									print(content)
-							'''
+						try:
+							response = requests.get(subUrl, headers=WGET_HEADERS)
+							response.raise_for_status()
+							# with open(subUrl.split('/')[-1], "w") as f:
+								# f.write(response.text)
+							soup = BeautifulSoup(response.text, 'html.parser')
+							divs = soup.find_all("div", attrs={"class": re.compile("live-blog-post css|live-blog-post pinned-post|live-blog-reporter-update")})
+							for div in divs:
+								cleanedDiv = div.get_text(" ", strip=True)
+								divIdentifier = cleanedDiv[:TERMINAL_WIDTH]
+								if divIdentifier not in mostRecentNYTArticles:
+									print(str(datetime.datetime.now()) + ": " + divIdentifier)
+									mostRecentNYTArticles.append(cleanedDiv[:TERMINAL_WIDTH])
+									if len(mostRecentNYTArticles) > MAX_RECENT_ARTICLES:
+										mostRecentNYTArticles = mostRecentNYTArticles[len(mostRecentNYTArticles) - MAX_RECENT_ARTICLES:]
+									totalResponse.append(cleanedDiv)
+									sendSocketMessage(sock, json.dumps({"title": divIdentifier}))
+								'''
+								scripts = soup.find_all("script", attrs={"data-rh": "true"})
+								for script in scripts:
+									print(script)
+									for content in script.contents:
+										print(content)
+								'''
+						except Exception as e:
+							traceback.print_exc()
+							printError(e)
 					elif subUrl not in mostRecentNYTArticles and isRelevantUrl(subUrl):
 						print(str(datetime.datetime.now()) + ": " + subUrl)
-						response = requests.get(subUrl, headers=WGET_HEADERS)
-						response.raise_for_status()
-						# with open(subUrl.split('/')[-1], "w") as f:
-							# f.write(response.text)
-						# print(response.text)
-						soup = BeautifulSoup(response.text, 'html.parser')
-						mainArticles = soup.find_all("article", attrs={"id": "story"})
-						# print(mainArticle)
-						for mainArticle in mainArticles:
-							cleanedArticle = mainArticle.get_text(" ", strip=True)
-							totalResponse.append(cleanedArticle)
-							# print(cleanedArticle)
-						mostRecentNYTArticles.append(subUrl)
-						if len(mostRecentNYTArticles) > MAX_RECENT_ARTICLES:
-							mostRecentNYTArticles = mostRecentNYTArticles[len(mostRecentNYTArticles) - MAX_RECENT_ARTICLES:]
-						sendSocketMessage(sock, json.dumps({"title": subUrl}))
+						try:
+							response = requests.get(subUrl, headers=WGET_HEADERS)
+							response.raise_for_status()
+							# with open(subUrl.split('/')[-1], "w") as f:
+								# f.write(response.text)
+							# print(response.text)
+							soup = BeautifulSoup(response.text, 'html.parser')
+							mainArticles = soup.find_all("article", attrs={"id": "story"})
+							for mainArticle in mainArticles:
+								cleanedArticle = mainArticle.get_text(" ", strip=True)
+								totalResponse.append(cleanedArticle)
+								# print(cleanedArticle)
+							mostRecentNYTArticles.append(subUrl)
+							if len(mostRecentNYTArticles) > MAX_RECENT_ARTICLES:
+								mostRecentNYTArticles = mostRecentNYTArticles[len(mostRecentNYTArticles) - MAX_RECENT_ARTICLES:]
+							sendSocketMessage(sock, json.dumps({"title": subUrl}))
+						except Exception as e:
+							traceback.print_exc()
+							printError(e)
 		except Exception as e:
 			traceback.print_exc()
 			printError(e)
